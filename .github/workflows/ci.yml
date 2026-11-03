@@ -17,6 +17,8 @@ jobs:
       - run: pip install -e ".[dev,azure]"
       - run: ruff check .
       - run: ruff format --check .
+      # Dagster reads the dbt manifest when the definitions are imported.
+      - run: dbt parse --project-dir dbt_project --profiles-dir dbt_project
       - run: pytest -q
 
   docker:
