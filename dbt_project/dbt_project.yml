@@ -18,3 +18,9 @@ models:
     marts:
       +schema: marts
       +materialized: table
+
+vars:
+  # Reorder assumptions in days, used by marts/rec_reorder.sql
+  supplier_lead_time_days: 10
+  safety_stock_days: 7
+  order_cover_days: 28

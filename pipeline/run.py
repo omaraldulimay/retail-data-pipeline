@@ -44,11 +44,31 @@ def load_all(in_process: bool = False) -> list[extract.LoadResult]:
             con.close()
 
 
+def reload_day(day: str) -> extract.LoadResult:
+    con = connect()
+    try:
+        return extract.reload_logistics_day(con, day, SOURCES_DIR / "logistics")
+    finally:
+        con.close()
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--in-process", action="store_true")
+    parser.add_argument(
+        "--reload-day",
+        metavar="YYYY-MM-DD",
+        help="force-reload the logistics file of one day and exit (dbt must be run afterwards)",
+    )
     args = parser.parse_args()
+    if args.reload_day:
+        try:
+            result = reload_day(args.reload_day)
+        except (FileNotFoundError, ValueError) as error:
+            parser.exit(1, f"error: {error}\n")
+        print(f"{result.source:22} reloaded {result.received:6} rows  {result.detail}")
+        return
     for result in load_all(args.in_process):
         print(
             f"{result.source:22} received {result.received:6}  new {result.new:6}  {result.detail}"

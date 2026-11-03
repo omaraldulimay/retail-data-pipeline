@@ -64,3 +64,58 @@ models:
           - accepted_values:
               arguments:
                 values: [ausverkauft, kritisch, knapp, ok]
+
+  - name: rec_reorder
+    description: >
+      SKUs that should be reordered, with date and quantity. Assumptions (lead time, safety
+      stock, order cover) are dbt vars in dbt_project.yml.
+    columns:
+      - name: snapshot_date
+        data_tests: [not_null]
+      - name: sku
+        data_tests: [unique, not_null]
+      - name: product_name
+        data_tests: [not_null]
+      - name: category
+        data_tests: [not_null]
+      - name: on_hand
+        data_tests: [not_null]
+      - name: avg_daily_units
+        data_tests: [not_null]
+      - name: days_of_cover
+        data_tests: [not_null]
+      - name: expected_stockout_date
+        description: Snapshot date plus full days of cover.
+        data_tests: [not_null]
+      - name: reorder_by_date
+        description: Stockout date minus supplier lead time.
+        data_tests: [not_null]
+      - name: reorder_qty
+        description: Units to order so that stock covers lead time, safety stock and order cover.
+        data_tests: [not_null, positive_value]
+      - name: priority
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [jetzt bestellen, bald bestellen]
+
+  - name: alert_sales_anomalies
+    description: >
+      Days whose revenue is at least 30 % below or 50 % above the average of the same weekday in
+      the 4 previous weeks. The first 4 weeks of data have no baseline and are skipped.
+    columns:
+      - name: order_date
+        data_tests: [unique, not_null]
+      - name: revenue
+        data_tests: [not_null]
+      - name: expected_revenue
+        data_tests: [not_null]
+      - name: deviation_pct
+        data_tests: [not_null]
+      - name: direction
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Einbruch, Ausreißer nach oben]

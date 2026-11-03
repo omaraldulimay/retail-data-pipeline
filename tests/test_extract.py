@@ -1,6 +1,8 @@
+import hashlib
 import json
 import random
 import shutil
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -199,3 +201,48 @@ def test_new_order_version_is_kept_as_second_row(con, api_for, sources_dir: Path
         [original["order_id"]],
     ).fetchall()
     assert versions == [(original["status"],), ("cancelled",)]
+
+
+def test_reload_logistics_day_replaces_rows_without_duplicates(con, logistics_copy: Path):
+    extract.load_logistics_files(con, logistics_copy)
+    name = "versand_2026-08-13.csv"
+    path = logistics_copy / name
+    total_before = rows_for_file(con, name)
+
+    # The file changes, but the stored checksum says it is already loaded: the normal load skips it.
+    path.write_bytes(b"".join(path.read_bytes().splitlines(keepends=True)[:-1]))
+    checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+    con.execute("update meta.loaded_files set checksum = ? where file_name = ?", [checksum, name])
+    assert extract.load_logistics_files(con, logistics_copy).received == 0
+    assert rows_for_file(con, name) == total_before
+
+    result = extract.reload_logistics_day(con, "2026-08-13", logistics_copy)
+    assert result.received == total_before - 1
+    assert rows_for_file(con, name) == total_before - 1
+    distinct_lines = count(
+        con, f"select count(distinct line_no) from raw.logistics_events where file_name = '{name}'"
+    )
+    assert distinct_lines == total_before - 1
+    assert con.execute(
+        "select row_count from meta.loaded_files where file_name = ?", [name]
+    ).fetchall() == [(total_before - 1,)]
+
+
+def test_reload_logistics_day_is_idempotent(con, logistics_copy: Path):
+    extract.load_logistics_files(con, logistics_copy)
+    first = extract.reload_logistics_day(con, date(2026, 8, 13), logistics_copy)
+    total = count(con, "select count(*) from raw.logistics_events")
+    second = extract.reload_logistics_day(con, date(2026, 8, 13), logistics_copy)
+    assert first.received == second.received
+    assert count(con, "select count(*) from raw.logistics_events") == total
+    assert count(con, "select count(*) from meta.loaded_files") == len(
+        list(logistics_copy.glob("versand_*.csv"))
+    )
+
+
+def test_reload_logistics_day_without_file_raises_and_changes_nothing(con, logistics_copy: Path):
+    extract.load_logistics_files(con, logistics_copy)
+    total = count(con, "select count(*) from raw.logistics_events")
+    with pytest.raises(FileNotFoundError, match="2026-08-14"):
+        extract.reload_logistics_day(con, "2026-08-14", logistics_copy)
+    assert count(con, "select count(*) from raw.logistics_events") == total

@@ -6,7 +6,7 @@ Start the UI with `dagster dev -m orchestration.definitions`.
 import logging
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -17,17 +17,23 @@ from dagster import (
     AssetKey,
     AssetSelection,
     AssetSpec,
+    DailyPartitionsDefinition,
     DefaultScheduleStatus,
     DefaultSensorStatus,
     Definitions,
+    In,
     MaterializeResult,
+    Nothing,
+    OpExecutionContext,
     RunFailureSensorContext,
     ScheduleDefinition,
     asset,
     asset_check,
     define_asset_job,
     in_process_executor,
+    job,
     multi_asset,
+    op,
     run_failure_sensor,
 )
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
@@ -49,6 +55,10 @@ dbt_project.prepare_if_dev()
 IN_PROCESS_SOURCES = os.getenv("SOURCE_API_URL") is None
 # Share of rejected rows per source above which the data quality check fails.
 MAX_REJECTED_SHARE = float(os.getenv("MAX_REJECTED_SHARE", "0.02"))
+# Hours after which the last successful load counts as stale.
+FRESHNESS_HOURS = float(os.getenv("FRESHNESS_HOURS", "26"))
+# A source may lag the newest source by this many days.
+MAX_SOURCE_LAG_DAYS = 1
 
 
 def _metadata(result: extract.LoadResult) -> dict:
@@ -201,6 +211,92 @@ def rejected_share_below_threshold() -> AssetCheckResult:
     )
 
 
+@asset_check(
+    asset=AssetKey(["marts", "alert_sales_anomalies"]),
+    description="Der letzte Tag in den Daten ist kein Umsatz-Ausreißer.",
+    additional_deps=[AssetKey(["marts", "agg_daily_sales"])],
+)
+def latest_day_not_anomalous() -> AssetCheckResult:
+    con = connect()
+    try:
+        latest = con.execute("select max(order_date) from marts.agg_daily_sales").fetchall()[0][0]
+        rows = con.execute(
+            "select revenue, expected_revenue, deviation_pct, direction "
+            "from marts.alert_sales_anomalies where order_date = ?",
+            [latest],
+        ).fetchall()
+    finally:
+        con.close()
+    metadata = {"latest_day": str(latest), "is_anomaly": bool(rows)}
+    if rows:
+        revenue, expected, deviation, direction = rows[0]
+        metadata |= {
+            "revenue": float(revenue),
+            "expected_revenue": float(expected),
+            "deviation_pct": float(deviation),
+            "direction": direction,
+        }
+    return AssetCheckResult(passed=not rows, severity=AssetCheckSeverity.WARN, metadata=metadata)
+
+
+@asset_check(
+    asset=AssetKey(["raw", "shop_orders"]),
+    description=(
+        f"Alle Quellen liefern Daten bis höchstens {MAX_SOURCE_LAG_DAYS} Tag hinter der "
+        f"neuesten Quelle, und der letzte erfolgreiche Load ist jünger als {FRESHNESS_HOURS:g} h."
+    ),
+    additional_deps=[
+        AssetKey(["raw", "wms_stock_snapshots"]),
+        AssetKey(["raw", "logistics_events"]),
+    ],
+)
+def sources_fresh() -> AssetCheckResult:
+    con = connect()
+    try:
+        return _check_sources_fresh(con)
+    finally:
+        con.close()
+
+
+def _check_sources_fresh(con, now: datetime | None = None) -> AssetCheckResult:
+    newest = {
+        "shop_orders": con.execute(
+            "select max(cast(payload ->> 'created_at' as timestamp)::date) from raw.shop_orders"
+        ).fetchall()[0][0],
+        "wms_stock_snapshots": con.execute(
+            "select max(cast(snapshot_date as date)) from raw.wms_stock_snapshots"
+        ).fetchall()[0][0],
+        "logistics": max(
+            (
+                date.fromisoformat(name[0].removeprefix("versand_").removesuffix(".csv"))
+                for name in con.execute("select file_name from meta.loaded_files").fetchall()
+            ),
+            default=None,
+        ),
+    }
+    # Rows in load_log are written only after a load finished, so they are all successful.
+    last_load = con.execute("select max(finished_at) from meta.load_log").fetchall()[0][0]
+    reference = max((day for day in newest.values() if day), default=None)
+    lagging = {
+        source: (reference - day).days
+        for source, day in newest.items()
+        if day is None or reference - day > timedelta(days=MAX_SOURCE_LAG_DAYS)
+    }
+    age_hours = ((now or datetime.now()) - last_load).total_seconds() / 3600 if last_load else None
+    load_stale = age_hours is None or age_hours > FRESHNESS_HOURS
+    metadata = {f"newest_{source}": str(day) for source, day in newest.items()}
+    metadata |= {
+        "lagging_sources": sorted(lagging),
+        "last_load_finished_at": str(last_load),
+        "last_load_age_hours": round(age_hours, 1) if age_hours is not None else None,
+    }
+    return AssetCheckResult(
+        passed=not lagging and not load_stale,
+        severity=AssetCheckSeverity.WARN,
+        metadata=metadata,
+    )
+
+
 daily_pipeline = define_asset_job("daily_pipeline", selection=AssetSelection.all())
 
 daily_schedule = ScheduleDefinition(
@@ -209,6 +305,30 @@ daily_schedule = ScheduleDefinition(
     execution_timezone="Europe/Berlin",
     default_status=DefaultScheduleStatus.RUNNING,
 )
+
+
+# Backfill of one day. An op job, because partitioned and unpartitioned assets cannot share a job.
+logistics_days = DailyPartitionsDefinition(start_date="2025-11-01", end_offset=0)
+
+
+@op(description="Reloads the partition's logistics CSV file, even if its checksum is unchanged.")
+def reload_logistics_file(context: OpExecutionContext):
+    con = connect()
+    try:
+        result = extract.reload_logistics_day(con, context.partition_key, SOURCES_DIR / "logistics")
+    finally:
+        con.close()
+    context.log.info("Reloaded %s rows (%s)", result.received, result.detail)
+
+
+@op(ins={"after_reload": In(Nothing)}, description="Rebuilds all dbt models and tests.")
+def build_models(dbt: DbtCliResource) -> None:
+    dbt.cli(["build"], manifest=dbt_project.manifest_path).wait()
+
+
+@job(partitions_def=logistics_days, executor_def=in_process_executor)
+def reload_logistics_day():
+    build_models(after_reload=reload_logistics_file())
 
 
 @run_failure_sensor(default_status=DefaultSensorStatus.RUNNING)
@@ -231,8 +351,13 @@ defs = Definitions(
         logistics_events,
         retail_models,
     ],
-    asset_checks=[logistics_files_complete, rejected_share_below_threshold],
-    jobs=[daily_pipeline],
+    asset_checks=[
+        logistics_files_complete,
+        rejected_share_below_threshold,
+        latest_day_not_anomalous,
+        sources_fresh,
+    ],
+    jobs=[daily_pipeline, reload_logistics_day],
     schedules=[daily_schedule],
     sensors=[notify_on_failure],
     # dbt is installed next to the Python that runs the pipeline, e.g. in .venv/bin.

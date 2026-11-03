@@ -28,7 +28,8 @@ year (Nov 2025 – Oct 2026) and is generated with realistic patterns and realis
 | **Store raw** | Data lands unchanged in DuckDB, so every number can be traced back to what a source delivered |
 | **Check** | dbt rules move broken rows into quarantine: zero or negative quantities, unknown articles, negative prices, negative stock, duplicate rows, unknown order numbers |
 | **Model** | dbt builds clean staging tables and reporting tables: daily sales, delivery performance per carrier, stock coverage, return rates |
-| **Orchestrate** | Dagster runs everything daily at 06:00, shows lineage and run history, checks for missing files and too many rejected rows, and sends failures to a chat webhook |
+| **Recommend** | `rec_reorder` lists SKUs to reorder with date and quantity (lead time, safety stock and order cover are dbt vars); `alert_sales_anomalies` flags days far from the same weekday of the 4 weeks before |
+| **Orchestrate** | Dagster runs everything daily at 06:00, shows lineage and run history, checks for missing files, too many rejected rows, stale sources and a revenue anomaly on the latest day, and sends failures to a chat webhook |
 | **Show** | A Streamlit dashboard with sales, delivery, stock, returns and data quality |
 
 ### Problems the pipeline handles
@@ -40,6 +41,8 @@ year (Nov 2025 – Oct 2026) and is generated with realistic patterns and realis
 - **Missing data** – the file for 14 August never arrives; Dagster flags the gap.
 - **Unreliable APIs** – with 20 % of requests failing, all data still arrives (retries with exponential backoff and jitter).
 - **Corrected re-deliveries** – a file re-sent under the same name with new content replaces the old rows.
+- **Backfill** – one day's logistics file can be force-reloaded (`--reload-day` or the `reload_logistics_day` Dagster job), even if its checksum is unchanged.
+- **Stale sources** – a Dagster check warns when a source lags the others by more than a day or the last load is older than `FRESHNESS_HOURS`.
 
 The quarantine finds exactly the errors the generator injected – the test suite checks this.
 
@@ -68,8 +71,9 @@ flowchart LR
 
 ![Dagster lineage](docs/screenshots/dagster-lineage.png)
 
-Every dbt test shows up in Dagster as a check on the table it guards, next to two Python checks: *every daily
-file arrived* and *at most 2 % of a source's rows are quarantined*.
+Every dbt test shows up in Dagster as a check on the table it guards, next to four Python checks: *every daily
+file arrived*, *at most 2 % of a source's rows are quarantined*, *sources are fresh* and *the latest day is
+no revenue anomaly* (the last two only warn).
 
 ## Quick start
 
@@ -96,6 +100,7 @@ python -m generator.generate                                       # one year of
 dagster job execute -m orchestration.definitions -j daily_pipeline  # load, check, model (~40 s)
 streamlit run dashboard/app.py                                      # dashboard
 dagster dev                                                         # optional: Dagster UI
+python -m pipeline.run --reload-day 2026-08-13                      # force-reload one logistics day, then run dbt build
 ```
 
 By default the mock source APIs run inside the pipeline process. To run them as a separate service, start
@@ -132,19 +137,20 @@ The numbers tell a story: DHL delivers on time most often, GLS least; in Decembe
 | `SOURCE_API_URL` | *(unset: in-process)* | URL of the source APIs |
 | `SOURCE_FAILURE_RATE` | `0` | Make the mock APIs fail randomly (0–1) |
 | `MAX_REJECTED_SHARE` | `0.02` | Quarantine share that fails the quality check |
+| `FRESHNESS_HOURS` | `26` | Age of the last successful load that fails the freshness check |
 | `ALERT_WEBHOOK_URL` | *(unset)* | Teams/Slack webhook for failed runs |
 
 ## Testing
 
 ```bash
-pytest -q                          # 37 tests, ~90 s
+pytest -q                          # 52 tests, ~2 min
 ruff check . && ruff format --check .
 ```
 
 - **Generator** – deterministic output, injected errors present, seasonality.
 - **HTTP** – retries on 503 and connection errors, no retry on 404, backoff timing.
 - **Extraction** – exact counts, idempotent reruns, resume after an interrupted run, 30 % API failures,
-  changed and new CSV files, new order versions.
+  changed and new CSV files, new order versions, single-day reload.
 - **dbt end to end** – builds the warehouse in a temp folder and checks that the quarantine counts equal the
   injected errors, that the missing day is detected and that reports contain only valid rows.
 - **CI** runs lint and tests, then builds the Docker image, runs the daily job inside it and checks the

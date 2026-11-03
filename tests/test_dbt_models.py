@@ -1,8 +1,10 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
+from datetime import timedelta
 from pathlib import Path
 
 import duckdb
@@ -162,3 +164,98 @@ def test_stock_coverage_has_one_row_per_product(wh):
     assert scalar(wh, "select count(*) from marts.agg_stock_coverage") == products
     assert scalar(wh, "select count(distinct sku) from marts.agg_stock_coverage") == products
     assert scalar(wh, "select min(on_hand) from marts.agg_stock_coverage") >= 0
+
+
+def test_reorder_rows_meet_priority_thresholds(wh):
+    lead, safety = 10, 7  # dbt vars, see dbt_project.yml
+    rows = wh.execute(
+        "select priority, days_of_cover, reorder_qty, snapshot_date, "
+        "expected_stockout_date, reorder_by_date from marts.rec_reorder"
+    ).fetchall()
+    assert rows
+    for priority, cover, qty, snapshot, stockout, reorder_by in rows:
+        if priority == "jetzt bestellen":
+            assert cover <= lead + safety
+        else:
+            assert priority == "bald bestellen"
+            assert lead + safety < cover <= lead + safety + 7
+        assert qty > 0
+        assert (stockout - snapshot).days == int(cover)
+        assert (stockout - reorder_by).days == lead
+    skus = {row[0] for row in wh.execute("select sku from marts.rec_reorder").fetchall()}
+    ok = wh.execute(
+        "select sku from marts.agg_stock_coverage where days_of_cover > ? or days_of_cover is null",
+        [lead + safety + 7],
+    ).fetchall()
+    assert skus.isdisjoint(sku for (sku,) in ok)
+
+
+def test_black_friday_week_has_upward_outlier(wh):
+    count = scalar(
+        wh,
+        "select count(*) from marts.alert_sales_anomalies "
+        "where direction = 'Ausreißer nach oben' "
+        "and order_date between date '2025-11-25' and date '2025-12-01'",
+    )
+    assert count >= 1
+
+
+def test_flagged_anomalies_meet_thresholds(wh):
+    rows = wh.execute(
+        "select order_date, revenue, expected_revenue, deviation_pct, direction "
+        "from marts.alert_sales_anomalies"
+    ).fetchall()
+    assert rows
+    for day, revenue, expected, deviation, direction in rows:
+        # the first 4 weeks have no baseline
+        assert str(day) >= "2025-11-29"
+        assert abs((float(revenue) / float(expected) - 1) * 100 - float(deviation)) < 0.1
+        if direction == "Einbruch":
+            assert deviation <= -30
+        else:
+            assert direction == "Ausreißer nach oben"
+            assert deviation >= 50
+
+
+def test_sources_fresh_passes_on_generated_data(wh):
+    from orchestration.definitions import _check_sources_fresh
+
+    result = _check_sources_fresh(wh)
+    assert result.passed
+    assert result.metadata["newest_shop_orders"].value == "2026-10-31"
+    assert result.metadata["newest_wms_stock_snapshots"].value == "2026-10-31"
+    assert result.metadata["newest_logistics"].value == "2026-10-31"
+
+
+def test_sources_fresh_fails_when_a_source_is_stale(built_warehouse, tmp_path):
+    from orchestration.definitions import _check_sources_fresh
+
+    copy = tmp_path / "stale.duckdb"
+    shutil.copy(built_warehouse, copy)
+    con = duckdb.connect(str(copy))
+    try:
+        con.execute("delete from meta.loaded_files where file_name >= 'versand_2026-10-20'")
+        result = _check_sources_fresh(con)
+        assert not result.passed
+        assert result.metadata["lagging_sources"].value == ["logistics"]
+        assert result.metadata["newest_logistics"].value == "2026-10-19"
+    finally:
+        con.close()
+
+
+def test_sources_fresh_fails_when_last_load_is_old(wh):
+    from orchestration.definitions import _check_sources_fresh
+
+    last_load = scalar(wh, "select max(finished_at) from meta.load_log")
+    assert _check_sources_fresh(wh, now=last_load + timedelta(hours=25)).passed
+    assert not _check_sources_fresh(wh, now=last_load + timedelta(hours=27)).passed
+
+
+def test_latest_day_check_reports_metadata(built_warehouse, monkeypatch):
+    import orchestration.definitions as definitions
+
+    monkeypatch.setattr(definitions, "connect", lambda: duckdb.connect(str(built_warehouse)))
+    result = definitions.latest_day_not_anomalous()
+    assert result.severity.value == "WARN"
+    assert result.metadata["latest_day"].value == "2026-10-31"
+    assert result.passed == (not result.metadata["is_anomaly"].value)

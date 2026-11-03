@@ -36,3 +36,20 @@ def test_daily_pipeline_job_and_schedule():
     assert schedule.cron_schedule == "0 6 * * *"
     assert schedule.execution_timezone == "Europe/Berlin"
     assert schedule.job_name == "daily_pipeline"
+
+
+def test_reload_job_is_partitioned_and_daily_pipeline_is_not():
+    from orchestration.definitions import defs
+
+    reload_job = defs.resolve_job_def("reload_logistics_day")
+    assert reload_job.partitions_def is not None
+    assert reload_job.partitions_def.start.date().isoformat() == "2025-11-01"
+    assert reload_job.partitions_def.end_offset == 0
+    assert defs.resolve_job_def("daily_pipeline").partitions_def is None
+
+
+def test_new_asset_checks_are_registered():
+    from orchestration.definitions import defs
+
+    names = {key.name for key in defs.resolve_asset_graph().asset_check_keys}
+    assert {"sources_fresh", "latest_day_not_anomalous"} <= names
