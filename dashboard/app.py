@@ -1,5 +1,17 @@
 """Dashboard for the retail data pipeline. Start with `streamlit run dashboard/app.py`."""
 
+import sys
+
+import streamlit as st
+
+if sys.version_info[:2] != (3, 12):
+    st.error(
+        "Diese App braucht Python 3.12 "
+        f"(läuft gerade mit {sys.version_info[0]}.{sys.version_info[1]}). "
+        "In Streamlit Cloud: App löschen und mit Python 3.12 neu anlegen."
+    )
+    st.stop()
+
 import html
 import json
 import os
@@ -9,7 +21,6 @@ from pathlib import Path
 import altair as alt
 import duckdb
 import pandas as pd
-import streamlit as st
 
 from pipeline.bootstrap import bootstrap_enabled
 from pipeline.warehouse import WAREHOUSE_PATH
@@ -228,10 +239,10 @@ if os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
 
 
 @st.cache_resource(show_spinner=False)
-def bootstrap_demo() -> bool:
+def bootstrap_demo(_progress=None) -> bool:
     from pipeline.bootstrap import ensure_warehouse
 
-    return ensure_warehouse()
+    return ensure_warehouse(progress=_progress)
 
 
 # Hosts without a pipeline run (Streamlit Community Cloud) build the demo data on first visit.
@@ -241,7 +252,14 @@ if not WAREHOUSE_PATH.exists() and bootstrap_enabled():
         expanded=True,
     ) as build_status:
         st.write("Quelldaten erzeugen, laden, prüfen und mit dbt modellieren …")
-        bootstrap_demo()
+        try:
+            bootstrap_demo(_progress=st.write)
+        except Exception as exc:  # shown to the visitor instead of an endless spinner
+            build_status.update(label="Der Datenaufbau ist fehlgeschlagen.", state="error")
+            st.error("Der Datenaufbau ist fehlgeschlagen. Bitte die App neu starten.")
+            with st.expander("Fehlerdetails"):
+                st.code(f"{type(exc).__name__}: {exc}")
+            st.stop()
         build_status.update(label="Daten sind bereit.", state="complete", expanded=False)
 
 if not WAREHOUSE_PATH.exists():
@@ -602,7 +620,7 @@ def reorder_table(frame: pd.DataFrame) -> None:
             "category": "Kategorie",
             "on_hand": "Bestand",
             "days_of_cover": "Reichweite (Tage)",
-            "expected_stockout_date": "Voraussichtlich leer am",
+            "expected_stockout_date": "Leer am",
             "reorder_by_date": "Bestellen bis",
             "reorder_qty": "Menge",
         }
@@ -612,7 +630,7 @@ def reorder_table(frame: pd.DataFrame) -> None:
             "Kategorie",
             "Bestand",
             "Reichweite (Tage)",
-            "Voraussichtlich leer am",
+            "Leer am",
             "Bestellen bis",
             "Menge",
             "Priorität",
@@ -626,9 +644,11 @@ def reorder_table(frame: pd.DataFrame) -> None:
         column_config={
             "Bestand": st.column_config.NumberColumn(format="localized"),
             "Reichweite (Tage)": st.column_config.NumberColumn(format="localized"),
-            "Voraussichtlich leer am": st.column_config.DateColumn(format="DD.MM.YYYY"),
+            "Leer am": st.column_config.DateColumn(format="DD.MM.YYYY"),
             "Bestellen bis": st.column_config.DateColumn(format="DD.MM.YYYY"),
             "Menge": st.column_config.NumberColumn(format="localized"),
+            "Artikel": st.column_config.TextColumn(width="medium"),
+            "Priorität": st.column_config.TextColumn(width="medium"),
         },
     )
 

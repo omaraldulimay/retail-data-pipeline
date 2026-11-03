@@ -7,7 +7,7 @@ systems are loaded every morning, checked for errors, turned into reporting tabl
 dashboard. Faulty rows are not silently dropped or let through – they are quarantined with a reason, so
 someone can fix the source.
 
-Live demo: *coming soon*
+**Live demo:** [retail-data-pipeline on Streamlit Cloud](https://retail-data-pipelinegit-4hxejfqxea7ut3ywrsfdkp.streamlit.app/)
 
 ![Dashboard demo: 30 seconds from KPIs to reorder recommendations](docs/demo.gif)
 
@@ -127,15 +127,21 @@ See [infra/README.md](infra/README.md) for deploy steps and costs.
 
 The dashboard can run on its own without Dagster or a `data/` folder: when the warehouse is missing, it
 generates the sources, loads them in process and runs `dbt build` once (about a minute), then shows the
-data. `requirements.txt` contains `-e .`, an editable install, so paths resolve to the cloned repo.
+data. Building is slow on the Cloud CPUs, so the dashboard first downloads the warehouse that CI builds on
+every push to `main` (release `demo-data`, override the URL with `DEMO_WAREHOUSE_URL`, empty disables it)
+and only falls back to building it if the download fails. `requirements.txt` contains `-e .`, an editable install, so paths resolve to the cloned repo.
 
 1. Open [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
 2. Click **New app** and choose the repository `omaraldulimay/retail-data-pipeline`, branch `main`, main
    file `dashboard/app.py`.
-3. Under **Advanced settings** choose **Python 3.12** (the Python version is set there, not in a file).
+3. **Important:** under **Advanced settings** choose **Python 3.12**. The version is set there, not in a
+   file, and the default can be newer (3.14 hangs the first build). The app shows an error and
+   `pip install` fails on anything but 3.12. A wrong version cannot be changed later: delete the
+   app and create it again.
 4. Optional: Streamlit Cloud is detected automatically (the repo is mounted at `/mount/src/`). To force the
    build elsewhere, set the secret `DEMO_BOOTSTRAP = "1"` (see `.streamlit/secrets.toml.example`).
-5. Click **Deploy**. The first visit builds the data; later visits are instant until the container restarts.
+5. Click **Deploy**. Afterwards open **Settings → Sharing** and set the app to **public**, otherwise
+   visitors must sign in. The first visit builds the data; later visits are instant until the container restarts.
 
 Locally nothing changes: without `DEMO_BOOTSTRAP=1` the dashboard expects a warehouse from the pipeline.
 

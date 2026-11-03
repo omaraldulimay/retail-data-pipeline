@@ -2,7 +2,7 @@
 name = "retail-data-pipeline"
 version = "0.1.0"
 description = "Daily data pipeline for a retailer: three sources, quality checks, dbt models and a dashboard"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "dagster==1.13.28",
     "dagster-webserver==1.13.28",
