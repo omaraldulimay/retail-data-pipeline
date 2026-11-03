@@ -175,7 +175,7 @@ The numbers tell a story: DHL delivers on time most often, GLS least; in Decembe
 ## Testing
 
 ```bash
-pytest -q                          # 52 tests, ~2 min
+pytest -q                          # 63 tests, ~5 min
 ruff check . && ruff format --check .
 ```
 
