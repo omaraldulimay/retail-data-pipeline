@@ -335,10 +335,11 @@ with st.sidebar:
     )
     st.markdown(pipeline_status(), unsafe_allow_html=True)
     st.markdown(
-        "<hr class='rule'><div class='side-title'>Über dieses Projekt</div>"
+        "<hr class='rule'><div class='side-title'>So entstehen die Zahlen</div>"
         "<div class='text' style='font-size:.85rem;color:" + MUTED + ";line-height:1.55'>"
-        "Eine Demo-Pipeline mit einem fiktiven Händler: Nordhafen Living gibt es nicht, "
-        "die Daten sind erzeugt. "
+        "Jeden Morgen um 6 Uhr lädt Dagster Shop, Warenwirtschaft und Versanddaten. "
+        "dbt prüft und modelliert sie in DuckDB; fehlerhafte Zeilen landen mit Begründung "
+        "in der Quarantäne. "
         f"<a href='{REPO_URL}' target='_blank'>Quellcode auf GitHub</a></div>",
         unsafe_allow_html=True,
     )
