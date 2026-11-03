@@ -1,0 +1,43 @@
+[project]
+name = "retail-data-pipeline"
+version = "0.1.0"
+description = "Daily data pipeline for a retailer: three sources, quality checks, dbt models and a dashboard"
+requires-python = ">=3.12"
+dependencies = [
+    "dagster==1.13.28",
+    "dagster-webserver==1.13.28",
+    "dagster-dbt==0.29.28",
+    "dbt-core==1.12.6",
+    "dbt-duckdb==1.11.1",
+    "duckdb==2.0.0",
+    "fastapi==0.162.0",
+    "httpx==0.28.1",
+    "pyarrow==26.0.1",
+    "streamlit==1.66.1",
+    "uvicorn[standard]==0.54.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "ruff==0.17.3"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["generator", "sources", "pipeline", "orchestration"]
+
+[tool.dagster]
+module_name = "orchestration.definitions"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["dbt_project"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

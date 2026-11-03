@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+data/
+.env
+.DS_Store
+dbt_project/target/
+dbt_project/logs/
+logs/
+*.egg-info/
+dbt_project/.user.yml

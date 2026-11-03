@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: Latest version of every order.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [paid, cancelled]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [webshop, app, marketplace]
+
+  - name: stg_products
+    columns:
+      - name: sku
+        data_tests: [unique, not_null]
+
+  - name: fct_order_lines
+    description: Valid order lines with product data. Quarantined lines are excluded.
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+      - name: sku
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: sku
+
+  - name: fct_shipment_events
+    columns:
+      - name: event
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [VERSENDET, ZUGESTELLT, RETOURE_EINGANG]
+      - name: event_at
+        data_tests: [not_null]
+      - name: order_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+
+  - name: fct_orders
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: agg_stock_coverage
+    columns:
+      - name: sku
+        data_tests: [unique, not_null]
+      - name: coverage_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ausverkauft, kritisch, knapp, ok]

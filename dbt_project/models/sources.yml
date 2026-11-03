@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Data exactly as delivered by the source systems.
+    tables:
+      - name: shop_products
+      - name: shop_orders
+      - name: wms_stock_snapshots
+      - name: logistics_events
+  - name: meta
+    tables:
+      - name: loaded_files
+        description: Written by the logistics load, one row per delivered file.
