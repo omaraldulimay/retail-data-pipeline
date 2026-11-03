@@ -1,5 +1,22 @@
 version: 2
 
+seeds:
+  - name: calendar_events
+    description: Known events (campaigns, holidays) that move revenue in a predictable direction.
+    columns:
+      - name: event
+        data_tests: [unique, not_null]
+      - name: start_date
+        data_tests: [not_null]
+      - name: end_date
+        data_tests: [not_null]
+      - name: expected_effect
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [up, down]
+
 models:
   - name: stg_orders
     description: Latest version of every order.
@@ -102,8 +119,10 @@ models:
 
   - name: alert_sales_anomalies
     description: >
-      Days whose revenue is at least 30 % below or 50 % above the average of the same weekday in
-      the 4 previous weeks. The first 4 weeks of data have no baseline and are skipped.
+      Days whose revenue is at least 30 % below or 50 % above the median of the same weekday in
+      the 4 previous weeks. The first 4 weeks of data have no baseline and are skipped. Days in a
+      calendar event (seed calendar_events) that moves the same way are kept but marked
+      is_expected; filter on `not is_expected` for the real incidents.
     columns:
       - name: order_date
         data_tests: [unique, not_null]
@@ -119,3 +138,13 @@ models:
           - accepted_values:
               arguments:
                 values: [Einbruch, Ausreißer nach oben]
+      - name: event
+        description: Calendar event the day falls into, if any (also when it points the other way).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('calendar_events')
+                field: event
+      - name: is_expected
+        description: True when the event's expected_effect matches the direction of the anomaly.
+        data_tests: [not_null]

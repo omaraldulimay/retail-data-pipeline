@@ -194,10 +194,37 @@ def test_black_friday_week_has_upward_outlier(wh):
     count = scalar(
         wh,
         "select count(*) from marts.alert_sales_anomalies "
-        "where direction = 'Ausreißer nach oben' "
+        "where direction = 'Ausreißer nach oben' and is_expected "
         "and order_date between date '2025-11-25' and date '2025-12-01'",
     )
     assert count >= 1
+
+
+def test_holiday_slump_is_expected_and_other_days_are_not(wh):
+    rows = wh.execute(
+        "select order_date, event, is_expected from marts.alert_sales_anomalies "
+        "where order_date between date '2025-12-21' and date '2026-01-05'"
+    ).fetchall()
+    assert len(rows) >= 10
+    assert all(event == "Feiertage" and expected for _, event, expected in rows)
+    # a slump outside any event is a real incident
+    assert scalar(
+        wh,
+        "select count(*) from marts.alert_sales_anomalies where event is null and not is_expected",
+    )
+    assert not scalar(
+        wh, "select count(*) from marts.alert_sales_anomalies where event is null and is_expected"
+    )
+
+
+def test_expected_flag_follows_event_direction(wh):
+    rows = wh.execute(
+        "select a.direction, e.expected_effect, a.is_expected "
+        "from marts.alert_sales_anomalies a left join reference.calendar_events e using (event)"
+    ).fetchall()
+    for direction, effect, expected in rows:
+        wanted = "down" if direction == "Einbruch" else "up"
+        assert expected == (effect == wanted)
 
 
 def test_flagged_anomalies_meet_thresholds(wh):
@@ -259,3 +286,29 @@ def test_latest_day_check_reports_metadata(built_warehouse, monkeypatch):
     assert result.severity.value == "WARN"
     assert result.metadata["latest_day"].value == "2026-10-31"
     assert result.passed == (not result.metadata["is_anomaly"].value)
+
+
+def test_latest_day_check_ignores_expected_days(built_warehouse, tmp_path, monkeypatch):
+    import orchestration.definitions as definitions
+
+    copy = tmp_path / "anomaly.duckdb"
+    shutil.copy(built_warehouse, copy)
+    monkeypatch.setattr(definitions, "connect", lambda: duckdb.connect(str(copy)))
+
+    def set_expected(value: bool) -> None:
+        con = duckdb.connect(str(copy))
+        try:
+            con.execute("delete from marts.alert_sales_anomalies")
+            con.execute(
+                "insert into marts.alert_sales_anomalies values "
+                f"(date '2026-10-31', 100, 500, -80.0, 'Einbruch', 'Feiertage', {value})"
+            )
+        finally:
+            con.close()
+
+    set_expected(True)
+    assert definitions.latest_day_not_anomalous().passed
+    set_expected(False)
+    result = definitions.latest_day_not_anomalous()
+    assert not result.passed
+    assert result.metadata["is_anomaly"].value

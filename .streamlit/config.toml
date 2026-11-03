@@ -1,10 +1,19 @@
 [theme]
 base = "light"
-primaryColor = "#2a78d6"
-backgroundColor = "#fcfcfb"
-secondaryBackgroundColor = "#f1f0ec"
-textColor = "#0b0b0b"
-font = "sans serif"
+primaryColor = "#2F4A3F"
+backgroundColor = "#F7F4EF"
+secondaryBackgroundColor = "#EFEAE2"
+textColor = "#2B2724"
+linkColor = "#2F4A3F"
+borderColor = "#E3DCD0"
+dataframeBorderColor = "#E3DCD0"
+showSidebarBorder = false
+baseRadius = "0.75rem"
+# Google Fonts are loaded on demand; offline the system fonts after the comma take over.
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, -apple-system, Helvetica Neue, sans-serif"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap, Georgia, Times New Roman, serif"
+headingFontSizes = ["3.25rem", "2rem", "1.4rem"]
+headingFontWeights = [400, 400, 500]
 
 [server]
 headless = true

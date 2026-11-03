@@ -7,6 +7,14 @@ test-paths: ["tests"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+seeds:
+  retail:
+    +schema: reference
+    calendar_events:
+      +column_types:
+        start_date: date
+        end_date: date
+
 models:
   retail:
     staging:

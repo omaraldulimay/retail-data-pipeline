@@ -213,7 +213,10 @@ def rejected_share_below_threshold() -> AssetCheckResult:
 
 @asset_check(
     asset=AssetKey(["marts", "alert_sales_anomalies"]),
-    description="Der letzte Tag in den Daten ist kein Umsatz-Ausreißer.",
+    description=(
+        "Der letzte Tag in den Daten ist kein unerwarteter Umsatz-Ausreißer "
+        "(Tage in bekannten Kalenderereignissen zählen nicht)."
+    ),
     additional_deps=[AssetKey(["marts", "agg_daily_sales"])],
 )
 def latest_day_not_anomalous() -> AssetCheckResult:
@@ -222,7 +225,7 @@ def latest_day_not_anomalous() -> AssetCheckResult:
         latest = con.execute("select max(order_date) from marts.agg_daily_sales").fetchall()[0][0]
         rows = con.execute(
             "select revenue, expected_revenue, deviation_pct, direction "
-            "from marts.alert_sales_anomalies where order_date = ?",
+            "from marts.alert_sales_anomalies where order_date = ? and not is_expected",
             [latest],
         ).fetchall()
     finally:

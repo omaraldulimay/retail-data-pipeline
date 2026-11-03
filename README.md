@@ -7,7 +7,7 @@ systems are loaded every morning, checked for errors, turned into reporting tabl
 dashboard. Faulty rows are not silently dropped or let through – they are quarantined with a reason, so
 someone can fix the source.
 
-![Dashboard](docs/screenshots/dashboard-sales.png)
+![Dashboard](docs/screenshots/dashboard-overview.png)
 
 ## The problem
 
@@ -28,8 +28,8 @@ year (Nov 2025 – Oct 2026) and is generated with realistic patterns and realis
 | **Store raw** | Data lands unchanged in DuckDB, so every number can be traced back to what a source delivered |
 | **Check** | dbt rules move broken rows into quarantine: zero or negative quantities, unknown articles, negative prices, negative stock, duplicate rows, unknown order numbers |
 | **Model** | dbt builds clean staging tables and reporting tables: daily sales, delivery performance per carrier, stock coverage, return rates |
-| **Recommend** | `rec_reorder` lists SKUs to reorder with date and quantity (lead time, safety stock and order cover are dbt vars); `alert_sales_anomalies` flags days far from the same weekday of the 4 weeks before |
-| **Orchestrate** | Dagster runs everything daily at 06:00, shows lineage and run history, checks for missing files, too many rejected rows, stale sources and a revenue anomaly on the latest day, and sends failures to a chat webhook |
+| **Recommend** | `rec_reorder` lists SKUs to reorder with date and quantity (lead time, safety stock and order cover are dbt vars); `alert_sales_anomalies` flags days far from the median of the same weekday in the 4 weeks before and marks the ones that a calendar event explains (seed `calendar_events`: Black Friday, Christmas, holidays, sale, summer dip) as expected |
+| **Orchestrate** | Dagster runs everything daily at 06:00, shows lineage and run history, checks for missing files, too many rejected rows, stale sources and an unexpected revenue anomaly on the latest day, and sends failures to a chat webhook |
 | **Show** | A Streamlit dashboard with sales, delivery, stock, returns and data quality |
 
 ### Problems the pipeline handles
@@ -73,7 +73,7 @@ flowchart LR
 
 Every dbt test shows up in Dagster as a check on the table it guards, next to four Python checks: *every daily
 file arrived*, *at most 2 % of a source's rows are quarantined*, *sources are fresh* and *the latest day is
-no revenue anomaly* (the last two only warn).
+no unexpected revenue anomaly* (the last two only warn).
 
 ## Quick start
 
@@ -120,6 +120,10 @@ The `infra/` folder holds a Terraform setup that is ready to deploy. It is valid
 See [infra/README.md](infra/README.md) for deploy steps and costs.
 
 ## Dashboard
+
+| Sales with calendar events | Reorder recommendations |
+|---|---|
+| ![Sales](docs/screenshots/dashboard-sales.png) | ![Reorder](docs/screenshots/dashboard-reorder.png) |
 
 | Delivery performance per carrier | Data quality and quarantine |
 |---|---|
