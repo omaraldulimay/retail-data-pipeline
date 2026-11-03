@@ -11,6 +11,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from pipeline.bootstrap import bootstrap_enabled
 from pipeline.warehouse import WAREHOUSE_PATH
 
 # Categorical slots in a fixed order (validated for colour-vision deficiencies).
@@ -224,6 +225,24 @@ def sync_warehouse() -> bool:
 # In Azure the warehouse lives in blob storage; fetch it at most every 15 minutes.
 if os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
     sync_warehouse()
+
+
+@st.cache_resource(show_spinner=False)
+def bootstrap_demo() -> bool:
+    from pipeline.bootstrap import ensure_warehouse
+
+    return ensure_warehouse()
+
+
+# Hosts without a pipeline run (Streamlit Community Cloud) build the demo data on first visit.
+if not WAREHOUSE_PATH.exists() and bootstrap_enabled():
+    with st.status(
+        "Die Pipeline baut die Daten zum ersten Mal auf – das dauert etwa eine Minute.",  # noqa: RUF001
+        expanded=True,
+    ) as build_status:
+        st.write("Quelldaten erzeugen, laden, prüfen und mit dbt modellieren …")
+        bootstrap_demo()
+        build_status.update(label="Daten sind bereit.", state="complete", expanded=False)
 
 if not WAREHOUSE_PATH.exists():
     st.error(

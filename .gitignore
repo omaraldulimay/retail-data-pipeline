@@ -13,3 +13,4 @@ dbt_project/.user.yml
 infra/.terraform*
 *.tfstate*
 *.tfvars
+.streamlit/secrets.toml

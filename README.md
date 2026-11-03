@@ -7,7 +7,11 @@ systems are loaded every morning, checked for errors, turned into reporting tabl
 dashboard. Faulty rows are not silently dropped or let through – they are quarantined with a reason, so
 someone can fix the source.
 
-![Dashboard](docs/screenshots/dashboard-overview.png)
+Live demo: *coming soon*
+
+![Dashboard demo: 30 seconds from KPIs to reorder recommendations](docs/demo.gif)
+
+[Watch in full quality (MP4)](docs/demo.mp4)
 
 ## The problem
 
@@ -119,7 +123,25 @@ The `infra/` folder holds a Terraform setup that is ready to deploy. It is valid
 
 See [infra/README.md](infra/README.md) for deploy steps and costs.
 
+## Deploy the dashboard to Streamlit Community Cloud
+
+The dashboard can run on its own without Dagster or a `data/` folder: when the warehouse is missing, it
+generates the sources, loads them in process and runs `dbt build` once (about a minute), then shows the
+data. `requirements.txt` contains `-e .`, an editable install, so paths resolve to the cloned repo.
+
+1. Open [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+2. Click **New app** and choose the repository `omaraldulimay/retail-data-pipeline`, branch `main`, main
+   file `dashboard/app.py`.
+3. Under **Advanced settings** choose **Python 3.12** (the Python version is set there, not in a file).
+4. Optional: Streamlit Cloud is detected automatically (the repo is mounted at `/mount/src/`). To force the
+   build elsewhere, set the secret `DEMO_BOOTSTRAP = "1"` (see `.streamlit/secrets.toml.example`).
+5. Click **Deploy**. The first visit builds the data; later visits are instant until the container restarts.
+
+Locally nothing changes: without `DEMO_BOOTSTRAP=1` the dashboard expects a warehouse from the pipeline.
+
 ## Dashboard
+
+![Dashboard](docs/screenshots/dashboard-overview.png)
 
 | Sales with calendar events | Reorder recommendations |
 |---|---|
