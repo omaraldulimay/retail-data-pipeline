@@ -13,7 +13,7 @@ COPY sources ./sources
 COPY pipeline ./pipeline
 COPY orchestration ./orchestration
 # Editable install, so paths resolve to /app where dbt_project and data live.
-RUN pip install -e .
+RUN pip install -e ".[azure]"
 
 COPY dbt_project ./dbt_project
 COPY dashboard ./dashboard

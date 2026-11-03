@@ -101,6 +101,19 @@ dagster dev                                                         # optional: 
 By default the mock source APIs run inside the pipeline process. To run them as a separate service, start
 `uvicorn sources.app:app --port 8100` and set `SOURCE_API_URL=http://127.0.0.1:8100`.
 
+## Deployment to Azure
+
+The `infra/` folder holds a Terraform setup that is ready to deploy. It is validated with
+`terraform validate` in CI but has not been applied, so nothing is running yet.
+
+- A Container App Job runs `python -m pipeline.cloud run` daily at 05:00 UTC (about 06:00 in Berlin).
+- The DuckDB file lives in a private blob container: the job downloads it, runs the pipeline and uploads it.
+- The dashboard is a Container App that scales to zero and refreshes the file at most every 15 minutes.
+- A user-assigned managed identity with *Storage Blob Data Contributor* replaces keys and passwords.
+- CI publishes the Docker image to `ghcr.io/omaraldulimay/retail-data-pipeline`.
+
+See [infra/README.md](infra/README.md) for deploy steps and costs.
+
 ## Dashboard
 
 | Delivery performance per carrier | Data quality and quarantine |
@@ -166,6 +179,6 @@ tests/            Unit and end-to-end tests
 
 ## Possible next steps
 
-- Deploy to Azure with Terraform (storage for the data, a container for Dagster, scheduled runs)
+- Run it in production on Azure and add alerting on failed job executions
 - Incremental dbt models for the large fact tables once data grows beyond a few million rows
 - Data contracts with the logistics partner instead of fixing formats after the fact

@@ -10,3 +10,6 @@ dbt_project/logs/
 logs/
 *.egg-info/
 dbt_project/.user.yml
+infra/.terraform*
+*.tfstate*
+*.tfvars

@@ -1,5 +1,7 @@
 """Dashboard for the retail data pipeline. Start with `streamlit run dashboard/app.py`."""
 
+import os
+
 import altair as alt
 import duckdb
 import pandas as pd
@@ -56,6 +58,17 @@ def with_table(chart: alt.Chart, table: pd.DataFrame) -> None:
     with st.expander("Als Tabelle anzeigen"):
         st.dataframe(table, hide_index=True, use_container_width=True)
 
+
+@st.cache_resource(ttl=900)
+def sync_warehouse() -> bool:
+    from pipeline.cloud import download_warehouse
+
+    return download_warehouse()
+
+
+# In Azure the warehouse lives in blob storage; fetch it at most every 15 minutes.
+if os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
+    sync_warehouse()
 
 if not WAREHOUSE_PATH.exists():
     st.error(
