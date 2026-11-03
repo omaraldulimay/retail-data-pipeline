@@ -30,7 +30,7 @@ from dagster import (
     multi_asset,
     run_failure_sensor,
 )
-from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
+from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
 
 from pipeline import extract
 from pipeline.run import SOURCES_DIR, source_client
@@ -124,7 +124,17 @@ def logistics_events():
     yield MaterializeResult(asset_key=AssetKey(["meta", "loaded_files"]))
 
 
-@dbt_assets(manifest=dbt_project.manifest_path)
+class FolderGroups(DagsterDbtTranslator):
+    """Groups dbt models by their folder (staging, quality, marts) in the Dagster UI."""
+
+    def get_group_name(self, dbt_resource_props):
+        fqn = dbt_resource_props.get("fqn", [])
+        if dbt_resource_props.get("resource_type") == "model" and len(fqn) > 2:
+            return fqn[1]
+        return super().get_group_name(dbt_resource_props)
+
+
+@dbt_assets(manifest=dbt_project.manifest_path, dagster_dbt_translator=FolderGroups())
 def retail_models(context: AssetExecutionContext, dbt: DbtCliResource):
     """Staging, quarantine and reporting tables, built and tested by dbt."""
     yield from dbt.cli(["build"], context=context).stream()

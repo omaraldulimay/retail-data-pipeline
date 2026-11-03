@@ -1,0 +1,23 @@
+services:
+  pipeline:
+    build: .
+    image: retail-data-pipeline:local
+    ports:
+      - "3000:3000"
+    volumes:
+      - warehouse:/app/data
+      - dagster:/app/.dagster
+
+  dashboard:
+    image: retail-data-pipeline:local
+    command: ["streamlit", "run", "dashboard/app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - warehouse:/app/data
+    depends_on:
+      - pipeline
+
+volumes:
+  warehouse:
+  dagster:

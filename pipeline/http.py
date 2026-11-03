@@ -18,7 +18,7 @@ def get_json(
     params: dict[str, Any] | None = None,
     attempts: int = 5,
     base_delay: float = 0.5,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> Any:
     """GET with retries and exponential backoff with jitter for transient failures."""
     for attempt in range(1, attempts + 1):
@@ -35,5 +35,5 @@ def get_json(
             raise RuntimeError(f"GET {url} failed after {attempts} attempts: {reason}")
         delay = random.uniform(0, base_delay * 2 ** (attempt - 1))
         logger.warning("GET %s failed with %s, retry %d in %.1fs", url, reason, attempt, delay)
-        sleep(delay)
+        (sleep or time.sleep)(delay)
     raise AssertionError("unreachable")

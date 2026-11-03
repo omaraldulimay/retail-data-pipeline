@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+data
+.pytest_cache
+.ruff_cache
+__pycache__
+*.egg-info
+dbt_project/target
+dbt_project/logs
+docs
+tests
