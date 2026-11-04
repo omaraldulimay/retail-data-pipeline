@@ -7,7 +7,7 @@ systems are loaded every morning, checked for errors, turned into reporting tabl
 dashboard. Faulty rows are not silently dropped or let through – they are quarantined with a reason, so
 someone can fix the source.
 
-**Live demo:** [retail-data-pipeline on Streamlit Cloud](https://retail-data-pipelinegit-4hxejfqxea7ut3ywrsfdkp.streamlit.app/)
+**Demo:** [30-second video](docs/demo.mp4) · [project page](https://omaraldulimay.github.io/projekte/retail-data-pipeline.html)
 
 ![Dashboard demo: 30 seconds from KPIs to reorder recommendations](docs/demo.gif)
 
