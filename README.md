@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/omaraldulimay/retail-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/omaraldulimay/retail-data-pipeline/actions/workflows/ci.yml)
 
+▶ **Try it in the browser:** [interactive demo on my portfolio](https://omaraldulimay.github.io/projekte/retail-data-pipeline.html#demo)
+
 A daily data pipeline for an online retailer. Orders, stock levels and shipping events from three different
 systems are loaded every morning, checked for errors, turned into reporting tables with dbt and shown in a
 dashboard. Faulty rows are not silently dropped or let through – they are quarantined with a reason, so
